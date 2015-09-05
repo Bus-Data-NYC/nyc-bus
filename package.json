@@ -1,0 +1,29 @@
+{
+  "name": "bus-sql",
+  "version": "0.0.0",
+  "description": "Queries teser for Natahn's NYC bus data",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kuanb/nyc-bus.git"
+  },
+  "keywords": [
+    "bus",
+    "nyc",
+    "transit",
+    "civic-tech"
+  ],
+  "author": "Kuan Butts",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/kuanb/nyc-bus/issues"
+  },
+  "homepage": "https://github.com/kuanb/nyc-bus",
+  "dependencies": {
+    "express": "^4.13.3",
+    "mysql": "^2.9.0"
+  }
+}
