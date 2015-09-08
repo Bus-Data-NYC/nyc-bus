@@ -1,5 +1,10 @@
 var express = require('express');
 var app = express();
+app.set('view engine', 'ejs');
+
+var bodyParser = require('body-parser');
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({extended: true}));
 
 var mysql      = require('mysql');
 var credentials = require('./credentials.js');
@@ -10,24 +15,40 @@ var connection = mysql.createConnection({
   password : credentials.password,
   database : credentials.database,
 });
-var app = express();
 
 connection.connect(function(err){
-if(!err) {
-    console.log("Database is connected ... \n\n");  
-} else {
-    console.log("Error connecting database ... \n\n");  
-}
+	if(!err) {
+	  console.log("Database is connected ... \n\n");  
+	} else {
+	  console.log("Error connecting database ... \n\n");  
+	}
 });
 
-app.get("/",function(req,res){
-connection.query("SELECT EXTRACT(YEAR_MONTH FROM sh.date) AS month, IF(WEEKDAY(sh.date) > 4, 'Weekend', 'Weekday') AS weekday, SUM(sh.scheduled), SUM(a.fulfilled), 100 * SUM(a.fulfilled) / SUM(sh.scheduled) AS fulfilled_pc FROM rds, schedule_hours AS sh LEFT JOIN adherence AS a ON (sh.date = a.date AND sh.rds = a.rds AND sh.hour = a.hour) WHERE route_id = 'M35' AND sh.rds = rds.rds AND sh.date < '2015-08-01' AND sh.hour BETWEEN 12 AND 15 AND !no_data GROUP BY month, weekday;", function(err, rows, fields) {
-connection.end();
-  if (!err)
-    console.log('The solution is: ', rows);
-  else
-    console.log('Error while performing Query.');
-  });
+app.get("/", function (req, res) {
+	res.render('index');
+})
+
+app.get("/query", function (req, res) {
+	connection.query('SELECT route_id FROM routes', function (error, rows, fields) {
+		if (!error) {
+			routes = rows.map(function (row) { return String(row.route_id)});
+			res.render('query', {routes: routes});
+		} else {
+			res.status(500).send({
+				error: error
+			})
+		}
+	});
+});
+
+app.post("/query", function (req, res){
+	connection.query(req.body.query, function (error, rows, fields) {
+		if (!error) {
+			res.status(200).send({rows: rows, fields: fields});
+		} else {
+			res.status(500).send({error: error});
+		}
+	});
 });
 
 var server = app.listen(3000, function () {
