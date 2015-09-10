@@ -11,29 +11,145 @@
     <!-- leaflet -->
     <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.5/leaflet.css" />
     <script src="http://cdn.leafletjs.com/leaflet-0.7.5/leaflet.js"></script>
+    <script src="bower_components/heatmap.js-amd/build/heatmap.min.js"></script>
+    <script src="bower_components/heatmap.js-amd/plugins/leaflet-heatmap.js"></script>
   </head>
 
   <style>
     .map {
       width: 100%;
-      height: 500px;
+      height: 400px;
+    }
+    .btn, .input-group-addon, .form-control {
+      border-radius: 0px;
     }
   </style>
   
   <body>
-    <div class="map" id="map">
+    <div class="container">
+      
+      <h2>
+        Mode performance and crash data
+      </h2>
+      
+      <div class="row">
+        <div class="col-xs-12">
+          <div class="btn btn-default pull-right" onclick="socrataQ()">
+            Run
+          </div>
+          <div class="input-group pull-right" style="width:125px">
+            <span class="input-group-addon">Killed</span>
+            <input type="number" class="form-control" min="0" max="10" value="1" id="kill">
+          </div>
+          <div class="input-group pull-right" style="width:125px">
+            <span class="input-group-addon">Injured</span>
+            <input type="number" class="form-control" min="0" max="10" value="0" id="injure">
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-xs-12">
+          <div class="map" id="map">
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-xs-12">
+          <div class="btn btn-default btn-xs pull-left" onclick="markerToggle()">
+            Toggle Markers
+          </div>
+          <div class="btn btn-default btn-xs pull-left" onclick="heatToggle()">
+            Toggle Heatmap
+          </div>
+        </div>
+      </div>
+
     </div>
   </body>
 
   <script type="text/javascript">
 
+    var cfg = {
+      radius: 0.01,
+      maxOpacity: .5, 
+      scaleRadius: true, 
+      useLocalExtrema: true,
+      latField: 'latitude',
+      lngField: 'longitude',
+      valueField: 'number_of_persons_injured'
+    };
+    var heatmapLayer = new HeatmapOverlay(cfg);
 
-    var map = L.map('map').setView([40.776463, -73.968571], 10);
+    var crashes = null;
+    var map = new L.map('map', {
+      center: new L.LatLng(40.776463, -73.968571),
+      zoom: 10,
+      layers: [heatmapLayer]
+    });
 
     L.tileLayer('http://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
+    function socrataQ () {
+      $.post('socrata', {
+        mode: 'BUS',
+        kill: $('#kill').val(),
+        injure: $('#injure').val()
+      })
+      .done(function (res) {
+        if (crashes !== null) { map.removeLayer(crashes.L); }
+        var markers = [];
+        res.data = res.data.map(function (data) {
+          if (data.location && !data.location.needs_recoding) {
+            var options = {
+              stroke: false,
+              radius: 3,
+            }
+            var lat = data.location.latitude;
+            var lng = data.location.longitude;
+            markers.push(L.circleMarker([lat, lng], options));
+            return data;
+          }
+        });
+        res.data = res.data.filter(function (data) {
+          return data !== undefined;
+        });
+        crashes = {
+          base: res.data,
+          L: L.layerGroup(markers)
+        };
+        crashes.L.addTo(map);
+
+      })
+      .fail(function (err) {
+        console.log('Call failed: ', err);
+      });
+    };
+
+    function markerToggle () {
+      if (crashes !== null) { 
+        if (map.hasLayer(crashes.L)) {
+          map.removeLayer(crashes.L);   
+        } else {
+          crashes.L.addTo(map);
+        }
+      }
+    };
+
+    function heatToggle () {
+      if (crashes !== null) {
+        var hmData = heatmapLayer._heatmap.getData();
+        hmData = hmData.data.length > 0 ? [] : crashes.base; 
+        var heatData = {data: hmData};
+        heatmapLayer.setData(heatData);
+      }
+    };
+
+    $(document).ready(function () {
+      socrataQ();
+    });
 
   </script>
 </html>

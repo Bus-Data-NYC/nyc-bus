@@ -32,7 +32,8 @@ var http = require('http');
 var socrata = {
 	host: 'data.cityofnewyork.us',
 	source: 'h9gi-nx95',
-	token: 'ENTER'
+	token: credentials.s_token,
+	limit: 50000,
 };
 
 
@@ -41,51 +42,42 @@ var Query = function (query) {
 	this.options = this.makeOptions(query);
 	this.response;
 };
-Query.prototype.prepQuery = function (query) {
-	query = query + '&';
-	return query;
-};
 Query.prototype.makeOptions = function (query) {
 	if (query == undefined) { query = ''; }
-	else { query = this.prepQuery(query); } 
-	var path = '/resource/' + socrata.source + '.json' + '?' + query + '$limit=50000&$$app_token=' + socrata.token;
+	else { query = query + '&'; } 
+	var path = '/resource/' + socrata.source + '.json?' + query + '$limit=' + socrata.limit + '&$$app_token=' + socrata.token;
 	path = path.split(" ").join("%20");
 	return {host: socrata.host, path: path};
 };
-Query.prototype.callback = function (response) {
-  var str = '';
-  response.on('data', function (chunk) {str += chunk;});
-  response.on('end', function () { this.response = JSON.parse(str);
-  console.log(this.response) });
-};
-
-
-
-
-
-var query = "$where=vehicle_type_code1 = 'BUS' OR vehicle_type_code2 = 'BUS' OR vehicle_type_code_3 = 'BUS' OR vehicle_type_code_4 = 'BUS' OR vehicle_type_code_5 = 'BUS' AND number_of_persons_killed > 0";
-var q = new Query(query);
-http.request(q.options, q.callback).end();
-
-
-
-
-
 
 
 app.get('/', function (req, res) {
 	res.render('index');
 })
 
-app.get('/socrata', function (req, res) {
-	var mode = req.body.query;
+app.post('/socrata', function (req, res) {
+	var mode = req.body.mode;
+	var kill = req.body.kill;
+	var injure = req.body.injure;
 	var allModes = ['BUS', 'BICYCLE', 'SCOOTER', 'TAXI', 'LIVERY VEHICLE'];
-	if (mode in allModes) {
-
+	if (allModes.indexOf(mode) > -1) {
+		var query = "$where=vehicle_type_code1 = '" + mode + "' OR vehicle_type_code2 = '" + mode + 
+								"' OR vehicle_type_code_3 = '" + mode + "' OR vehicle_type_code_4 = '" + mode + 
+								"' OR vehicle_type_code_5 = '" + mode + "' AND number_of_persons_killed>=" + kill + 
+								" AND number_of_persons_injured>=" + injure;
+		var q = new Query(query);
+		var callback = function (response) {
+		  var str = '';
+		  response.on('data', function (chunk) {str += chunk;});
+		  response.on('end', function () { 
+		  	var data = JSON.parse(str);
+		  	res.status(200).send({data: data});
+		  });
+		};
+		http.request(q.options, callback).end();
 	} else {
 		res.status(500).send()
 	}
-	res.render('index');
 })
 
 app.get('/query', function (req, res) {

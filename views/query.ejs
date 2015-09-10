@@ -27,18 +27,15 @@
   <script type="text/javascript">
 
     var routes = '<%= routes %>'.split(',');
-
-    var consumer = new soda.Consumer('explore.data.gov');
-
-    consumer.query()
-      .withDataset('644b-gaut')
-      .limit(5)
-      .where({ namelast: 'SMITH' })
-      .order('namelast')
-      .getRows()
-        .on('success', function(rows) { console.log(rows); })
-        .on('error', function(error) { console.error(error); });
-
+    
+    function runQuery () {
+      var t = document.getElementById("sql-query").value;
+      $.post('query/', {query: t})
+        .done(function (res) {
+          console.log('done', res);
+          $('#result').html('Result: ' + String(res.rows));
+        });
+    }
 
   </script>
 </html>
