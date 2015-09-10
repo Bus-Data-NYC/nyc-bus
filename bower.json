@@ -22,6 +22,7 @@
     "tests"
   ],
   "dependencies": {
-    "heatmap.js-amd": "*"
+    "heatmap.js-amd": "*",
+    "typeahead.js": "~0.11.1"
   }
 }

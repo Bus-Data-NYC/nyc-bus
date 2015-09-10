@@ -2,6 +2,7 @@ var express = require('express');
 var app = express();
 
 app.set('view engine', 'ejs');
+app.use('/static',  express.static(__dirname + '/static'));
 app.use('/bower_components',  express.static(__dirname + '/bower_components'));
 
 var bodyParser = require('body-parser');
@@ -83,25 +84,14 @@ app.post('/socrata', function (req, res) {
 app.get('/query', function (req, res) {
 	connection.query('SELECT route_id FROM routes', function (error, rows, fields) {
 		if (!error) {
-			routes = rows.map(function (row) { return String(row.route_id)});
 			res.render('query', {routes: routes});
+			res.status(500).send({error: error})
 		} else {
-			res.status(500).send({
-				error: error
-			})
+			res.status(500).send({error: error})
 		}
 	});
 });
 
-app.post('/query', function (req, res){
-	connection.query(req.body.query, function (error, rows, fields) {
-		if (!error) {
-			res.status(200).send({rows: rows, fields: fields});
-		} else {
-			res.status(500).send({error: error});
-		}
-	});
-});
 
 var server = app.listen(3000, function () {
   var host = server.address().address;
