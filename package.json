@@ -4,7 +4,8 @@
   "description": "Queries teser for Natahn's NYC bus data",
   "main": "index.js",
   "scripts": {
-    "test": "npm test"
+    "test": "npm test",
+    "start": "node app.js"
   },
   "repository": {
     "type": "git",
@@ -24,7 +25,9 @@
   "homepage": "https://github.com/kuanb/nyc-bus",
   "dependencies": {
     "body-parser": "^1.13.3",
+    "bower": "^1.5.2",
     "express": "^4.13.3",
-    "mysql": "^2.9.0"
+    "mysql": "^2.9.0",
+    "soda-js": "^0.2.1"
   }
 }
