@@ -81,6 +81,21 @@ app.post('/socrata', function (req, res) {
 	}
 })
 
+
+app.post('/sql/route', function (req, res) {
+	var route = req.body.route;
+	// var query = "SELECT * FROM rds WHERE route_id = '" + route + "'";
+	var query = "SELECT * FROM shapes WHERE INSTR(`shape_id`, '" + route + "') > 0"
+	connection.query(query, function (error, rows, fields) {
+		if (!error) {
+			res.status(200).send({rows: rows, fields: fields})
+		} else {
+			res.status(500).send({error: error})
+		}
+	});
+});
+
+
 app.get('/query', function (req, res) {
 	connection.query('SELECT route_id FROM routes', function (error, rows, fields) {
 		if (!error) {
@@ -91,7 +106,6 @@ app.get('/query', function (req, res) {
 		}
 	});
 });
-
 
 var server = app.listen(3000, function () {
   var host = server.address().address;

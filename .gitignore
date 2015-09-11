@@ -2,3 +2,4 @@ credentials.js
 .DS_Store
 node_modules/
 .env
+bower_components

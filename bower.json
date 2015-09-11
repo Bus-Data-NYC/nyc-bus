@@ -23,6 +23,7 @@
   ],
   "dependencies": {
     "heatmap.js-amd": "*",
+    "jquery": "~2.1.4",
     "typeahead.js": "~0.11.1"
   }
 }

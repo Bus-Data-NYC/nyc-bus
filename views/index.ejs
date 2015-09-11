@@ -41,6 +41,9 @@
       
       <h2>
         Mode performance and crash data
+        <small id="loading">
+          ...loading...
+        </small>
       </h2>
       
       <div class="row" style="max-height: 34px;">
@@ -71,6 +74,9 @@
       </div>
       <div class="row">
         <div class="col-xs-12">
+          <div class="btn btn-default btn-xs pull-left" onclick="stopsToggle()">
+            Toggle Stops
+          </div>
           <div class="btn btn-default btn-xs pull-left" onclick="markerToggle()">
             Toggle Markers
           </div>
@@ -84,6 +90,8 @@
   </body>
 
   <script type="text/javascript">
+
+    var intervalGlobal = null;
 
     var cfg = {
       radius: 0.01,
@@ -109,6 +117,8 @@
     }).addTo(map);
 
     function socrataQ () {
+      animateLoading()
+
       $.post('socrata', {
         mode: 'BUS',
         kill: $('#kill').val(),
@@ -126,20 +136,21 @@
             var lat = parseFloat(data.location.latitude),
                 lng = parseFloat(data.location.longitude), 
                 latlng = L.latLng(lat, lng);
-            markers.push(L.circleMarker(latlng, options));
+            markers.push(L.circle([lat, lng], 20, options));
             return data;
           }
         });
         res.data = res.data.filter(function (data) {
           return data !== undefined;
         });
+
         crashes = {
           base: res.data,
           L: L.layerGroup(markers)
         };
         heatmapLayer.setData({data: []});
         crashes.L.addTo(map);
-
+        terminateLoading()
       })
       .fail(function (err) {
         console.log('Call failed: ', err);
@@ -152,6 +163,16 @@
           map.removeLayer(crashes.L);   
         } else {
           crashes.L.addTo(map);
+        }
+      }
+    };
+
+    function stopsToggle () {
+      if (crashes !== null) { 
+        if (map.hasLayer(stops)) {
+          map.removeLayer(stops);   
+        } else {
+          stops.addTo(map);
         }
       }
     };
@@ -172,7 +193,42 @@
     });
 
     function routeSelect () {
-      console.log('doo')
+      animateLoading();
+      var route = $("#routeSelect").val();
+      if (route !== '' && route !== undefined) {
+        $.post('/sql/route', {route: route})
+        .done(function (res) { console.log(res);
+          var points = res.rows; 
+          var ids = points.map(function (stop) { return stop.stop_id });
+          var pointlist = {};
+          points.forEach(function (point) {
+            var id = point.shape_id;
+            if (pointlist[id] && pointlist[id].length > 0) {
+              pointlist[id].push(new L.LatLng(point.shape_pt_lat, point.shape_pt_lon));
+            } else {
+              var crumb = new L.LatLng(point.shape_pt_lat, point.shape_pt_lon);
+              crumb.properties = point;
+              pointlist[id] = [crumb];
+            }
+          })
+
+          for (route in pointlist) {console.log(route);
+            route = pointlist[route]; 
+            var polyline = new L.Polyline(route, {
+              color: 'red',
+              weight: 3,
+              opacity: 0.75,
+              smoothFactor: 1
+            });
+            polyline.addTo(map);
+          };
+
+          terminateLoading();
+        })
+        .fail(function (err) {
+          console.log('Route call failed: ', err);
+        })
+      }
     };
 
     var substringMatcher = function(strs) {
@@ -186,6 +242,21 @@
         cb(matches);
       };
     };
+
+    function animateLoading () {
+      intervalGlobal = setInterval(function () {
+        var text = $('#loading').text();
+        if (text.endsWith('.')) { $('#loading').text('...loading..'); }
+        if (text.endsWith('..')) { $('#loading').text('...loading...'); }
+        if (text.endsWith('...')) { $('#loading').text('...loading'); }
+        else { $('#loading').text('...loading.'); }
+      }, 500);
+    };
+
+    function terminateLoading () {
+      clearInterval(intervalGlobal);
+      $('#loading').text("");
+    }
 
     $(document).ready(function () {
       $.getJSON('static/data/buslines.json')
@@ -209,7 +280,7 @@
         .complete(function(data) { 
           var res = JSON.parse(data.responseText);
           stops = res;
-          stops.features = stops.features.slice(0,2000);
+          // stops.features = stops.features.slice(0,2000);
           stops.features = stops.features.map(function (stop) {
             var lat = stop.properties.stop_lat;
             var lng = stop.properties.stop_lon;
@@ -218,19 +289,18 @@
           });
 
           var style = {
-            radius: 8,
+            radius: 2,
             fillColor: "#ff7800",
-            color: "#000",
-            weight: 1,
-            opacity: 1,
+            weight: 0,
             fillOpacity: 0.8
           };
 
-          var foo = L.geoJson(stops, {
+          stops = L.geoJson(stops, {
             pointToLayer: function (feature, latlng) {
-              return L.circleMarker(latlng, style);
+              return L.circle(latlng, 15, style);
             }
-          }).addTo(map);
+          });
+          // stops.addTo(map);
 
         });
 
