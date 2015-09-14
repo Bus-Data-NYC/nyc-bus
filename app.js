@@ -34,7 +34,7 @@ var socrata = {
 	host: 'data.cityofnewyork.us',
 	source: 'h9gi-nx95',
 	token: credentials.s_token,
-	limit: 50000,
+	limit: 10000,
 };
 
 
@@ -49,6 +49,19 @@ Query.prototype.makeOptions = function (query) {
 	var path = '/resource/' + socrata.source + '.json?' + query + '$limit=' + socrata.limit + '&$$app_token=' + socrata.token;
 	path = path.split(" ").join("%20");
 	return {host: socrata.host, path: path};
+};
+
+
+// © Chris Veness, MIT-licensed, http://www.movable-type.co.uk/scripts/latlong.html#equirectangular
+function distance(lambda1,phi1,lambda2,phi2) {
+  var R = 6371000; // meters
+  difLambda = (lambda2 - lambda1) * Math.PI / 180;
+  phi1 = phi1 * Math.PI / 180;
+  phi2 = phi2 * Math.PI / 180;
+  var x = difLambda * Math.cos((phi1+phi2)/2);
+  var y = (phi2-phi1);
+  var d = Math.sqrt(x*x + y*y);
+  return R * d;
 };
 
 
@@ -84,11 +97,72 @@ app.post('/socrata', function (req, res) {
 
 app.post('/sql/route', function (req, res) {
 	var route = req.body.route;
-	// var query = "SELECT * FROM rds WHERE route_id = '" + route + "'";
-	var query = "SELECT * FROM shapes WHERE INSTR(`shape_id`, '" + route + "') > 0"
+	console.log('Received MySQL request for route: ', route);
+	var query = "SELECT shapes.*, trips.* FROM shapes JOIN trips ON shapes.shape_index = trips.shape_index WHERE route_id = '" + route + "' AND trips.feed_index > 25";
+	query = query + " LIMIT " + socrata.limit + " ;";
 	connection.query(query, function (error, rows, fields) {
+		console.log('Completed MySQL request for route: ', route);
 		if (!error) {
-			res.status(200).send({rows: rows, fields: fields})
+      var pointlist = {}; 
+      rows.forEach(function (point) {
+        var id = point.shape_id;
+        if (!pointlist.hasOwnProperty(id)) {
+          pointlist[id] = {};
+        }
+        if (!pointlist[id].hasOwnProperty(point.direction_id)) {
+          pointlist[id][point.direction_id] = [point];
+        } else {
+          var ti = pointlist[id][point.direction_id][0].trip_index;
+          var cr = point.trip_index;
+          if (ti == cr && (point.direction_id == 0 || point.direction_id == 1)) {
+            pointlist[id][point.direction_id].push(point);
+          }
+        }
+      });
+
+      // currently I roll everything into one trip in each direction
+      var sel = {0: [], 1:[]};
+      for (id in pointlist) {
+      	var rt = pointlist[id];
+      	if (Array.isArray(rt[0]) && rt[0].length > 0) { sel[0] = sel[0].concat(rt[0]); }
+      	if (Array.isArray(rt[1]) && rt[1].length > 0) { sel[1] = sel[1].concat(rt[1]); }
+      }
+
+      // then I clean the results of the merge(s)
+      for (n in [0, 1]) {
+				for (var i = 0; i < sel[n].length;  i++) {
+					if (sel[n][i] == null || sel[n][i] == undefined || typeof sel[n][i] !== 'object') {
+						sel[n].splice(i, 1);
+					}
+				}
+			}
+
+			// use distance measure to determine if sae trip for breadcrumbs
+			var broken = {0: [], 1:[]};
+      for (n in [0, 1]) {
+      	var trip = [];
+				for (var i = 0; i < sel[n].length;  i++) {
+					if (i > 0) {
+						var prior = sel[n][i-1],
+								current = sel[n][i];
+						var result = distance(current.shape_pt_lat, current.shape_pt_lon, prior.shape_pt_lat, prior.shape_pt_lon);
+						if (result < 500 && i !== sel[n].length - 1) {
+							trip.push(sel[n][i]);	
+						} else {
+							broken[n].push(trip);
+							trip = [];
+							trip.push(sel[n][i]);
+						}
+					} else {
+						trip.push(sel[n][i]);
+					}
+					if (sel[n][i] == null || sel[n][i] == undefined || typeof sel[n][i] !== 'object') {
+						sel[n].splice(i, 1);
+					}
+				}
+			}
+
+			res.status(200).send({pointlist: broken})
 		} else {
 			res.status(500).send({error: error})
 		}

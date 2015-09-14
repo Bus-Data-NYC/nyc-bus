@@ -28,6 +28,7 @@
     "bower": "^1.5.2",
     "express": "^4.13.3",
     "mysql": "^2.9.0",
-    "soda-js": "^0.2.1"
+    "soda-js": "^0.2.1",
+    "string.prototype.endswith": "^0.2.0"
   }
 }

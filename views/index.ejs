@@ -107,8 +107,8 @@
     var crashes = null;
     var stops = null;
     var map = new L.map('map', {
-      center: new L.LatLng(40.776463, -73.968571),
-      zoom: 10,
+      center: new L.LatLng(40.75, -73.92),
+      zoom: 12,
       layers: [heatmapLayer]
     });
 
@@ -197,30 +197,43 @@
       var route = $("#routeSelect").val();
       if (route !== '' && route !== undefined) {
         $.post('/sql/route', {route: route})
-        .done(function (res) { console.log(res);
-          var points = res.rows; 
-          var ids = points.map(function (stop) { return stop.stop_id });
-          var pointlist = {};
-          points.forEach(function (point) {
-            var id = point.shape_id;
-            if (pointlist[id] && pointlist[id].length > 0) {
-              pointlist[id].push(new L.LatLng(point.shape_pt_lat, point.shape_pt_lon));
-            } else {
-              var crumb = new L.LatLng(point.shape_pt_lat, point.shape_pt_lon);
-              crumb.properties = point;
-              pointlist[id] = [crumb];
-            }
-          })
+        .done(function (res) {
+          console.log('res' , res);
 
-          for (route in pointlist) {console.log(route);
-            route = pointlist[route]; 
-            var polyline = new L.Polyline(route, {
-              color: 'red',
-              weight: 3,
-              opacity: 0.75,
-              smoothFactor: 1
-            });
-            polyline.addTo(map);
+          var pointlist = {};
+          for (dir in res.pointlist) {
+            pointlist[dir] = [];
+            var paths = res.pointlist[dir];
+            for (path in paths) {
+              path = paths[path];
+              var sec = [];
+              for (point in path) {
+                point = path[point];
+                var crumb = new L.LatLng(point.shape_pt_lat, point.shape_pt_lon);
+                crumb.properties = point;
+                sec.push(crumb);
+              }
+              pointlist[dir].push(sec);
+            };
+          }
+
+          for (dir in pointlist) {
+            for (sec in pointlist[dir]) {
+              var polyline = new L.Polyline(pointlist[dir][sec], {
+                color: '#ff3232',
+                weight: 2,
+                opacity: 0.75,
+                smoothFactor: 1
+              });
+
+              if (sec == 0)
+                polyline.addTo(map);
+              pointlist[dir].forEach(function (ll) {
+                ll.forEach(function (bb) {
+                  // L.circle(bb, 20).bindPopup(String(bb)).addTo(map);
+                })
+              })
+            }
           };
 
           terminateLoading();
@@ -244,11 +257,12 @@
     };
 
     function animateLoading () {
+      clearInterval(intervalGlobal);
       intervalGlobal = setInterval(function () {
         var text = $('#loading').text();
-        if (text.endsWith('.')) { $('#loading').text('...loading..'); }
-        if (text.endsWith('..')) { $('#loading').text('...loading...'); }
         if (text.endsWith('...')) { $('#loading').text('...loading'); }
+        else if (text.endsWith('..')) { $('#loading').text('...loading...'); }
+        else if (text.endsWith('.')) { $('#loading').text('...loading..'); }
         else { $('#loading').text('...loading.'); }
       }, 500);
     };
@@ -261,10 +275,7 @@
     $(document).ready(function () {
       $.getJSON('static/data/buslines.json')
         .complete(function(data) { 
-          var res = JSON.parse(data.responseText);
-          res = res.map(function (each) {
-            return each.route_id;
-          })
+          var res = JSON.parse(data.responseText); 
           $('#bus-search .typeahead')
           .typeahead({
             hint: true,
