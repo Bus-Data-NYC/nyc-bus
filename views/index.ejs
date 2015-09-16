@@ -41,17 +41,21 @@
       
       <h2>
         Mode performance and crash data
-        <small id="loading">
+        <small id="loading" class="label label-default">
           ...loading...
         </small>
       </h2>
       
       <div class="row" style="max-height: 34px;">
         <div class="col-xs-12">
-          <div class="input-group pull-left" id="bus-search" style="width:125px">
+          <div class="input-group pull-left" id="bus-search" style="width:150px">
             <span class="input-group-addon" style="max-height:34px; overflow-y: hidden">Route</span>
-            <input type="text" class="typeahead form-control" id="routeSelect" onclick="routeSelect()">
+            <input type="text" class="typeahead form-control" id="routeSelect">
           </div>
+          <div class="btn btn-default" onclick="routeSelect()">
+            Load
+          </div>
+
           <div class="btn btn-default pull-right" onclick="socrataQ()">
             Run
           </div>
@@ -172,6 +176,7 @@
         if (map.hasLayer(stops)) {
           map.removeLayer(stops);   
         } else {
+          console.log(stops);
           stops.addTo(map);
         }
       }
@@ -186,17 +191,11 @@
       }
     };
 
-    $("#routeSelect").keyup(function(event){
-      if(event.keyCode == 13){
-        $("#routeSelect").click();
-      }
-    });
-
     function routeSelect () {
-      animateLoading();
       var route = $("#routeSelect").val();
       if (route !== '' && route !== undefined) {
-        $.post('/sql/route', {route: route})
+        animateLoading();
+        $.post('/sql/route/path', {route: route})
         .done(function (res) {
           console.log('res' , res);
 
@@ -225,14 +224,7 @@
                 opacity: 0.75,
                 smoothFactor: 1
               });
-
-              if (sec == 0)
-                polyline.addTo(map);
-              pointlist[dir].forEach(function (ll) {
-                ll.forEach(function (bb) {
-                  // L.circle(bb, 20).bindPopup(String(bb)).addTo(map);
-                })
-              })
+              polyline.addTo(map);
             }
           };
 
@@ -240,6 +232,14 @@
         })
         .fail(function (err) {
           console.log('Route call failed: ', err);
+        })
+
+        $.post('/sql/route/stops', {route: route})
+        .done(function (res) {
+          console.log(res)
+        })
+        .fail(function (err) {
+          console.log('MyTransit NYC Beta call failed: ', err);
         })
       }
     };
@@ -258,34 +258,30 @@
 
     function animateLoading () {
       clearInterval(intervalGlobal);
+      $('#loading').text('...loading...');
       intervalGlobal = setInterval(function () {
         var text = $('#loading').text();
-        if (text.endsWith('...')) { $('#loading').text('...loading'); }
-        else if (text.endsWith('..')) { $('#loading').text('...loading...'); }
-        else if (text.endsWith('.')) { $('#loading').text('...loading..'); }
-        else { $('#loading').text('...loading.'); }
-      }, 500);
+        var text = text.substr(text.length-2, text.length-1) + text.substr(0, text.length-2); 
+        $('#loading').text(text);
+      }, 150);
     };
 
     function terminateLoading () {
       clearInterval(intervalGlobal);
-      $('#loading').text("");
+      $('#loading').text('');
     }
 
     $(document).ready(function () {
-      $.getJSON('static/data/buslines.json')
-        .complete(function(data) { 
-          var res = JSON.parse(data.responseText); 
-          $('#bus-search .typeahead')
-          .typeahead({
-            hint: true,
-            highlight: true,
-            minLength: 1
-          }, {
-            name: 'routes',
-            source: substringMatcher(res)
-          });
-        });
+
+      $('#bus-search .typeahead')
+      .typeahead({
+        hint: true,
+        highlight: true,
+        minLength: 1
+      }, {
+        name: 'routes',
+        source: substringMatcher('<%= buslines %>'.split(','))
+      });
 
       $.getJSON('static/data/busstops.geojson')
         .complete(function(data) { 
@@ -311,7 +307,6 @@
               return L.circle(latlng, 15, style);
             }
           });
-          // stops.addTo(map);
 
         });
 

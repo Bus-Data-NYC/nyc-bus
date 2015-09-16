@@ -37,6 +37,8 @@ var socrata = {
 	limit: 10000,
 };
 
+var buslines = require('./static/data/buslines.js');
+
 
 // query class construction
 var Query = function (query) {
@@ -66,7 +68,8 @@ function distance(lambda1,phi1,lambda2,phi2) {
 
 
 app.get('/', function (req, res) {
-	res.render('index');
+	var bl = Object.keys(buslines);
+	res.render('index', {buslines: bl});
 })
 
 app.post('/socrata', function (req, res) {
@@ -95,8 +98,8 @@ app.post('/socrata', function (req, res) {
 })
 
 
-app.post('/sql/route', function (req, res) {
-	var route = req.body.route;
+app.post('/sql/route/path', function (req, res) {
+	var route = buslines[req.body.route];
 	console.log('Received MySQL request for route: ', route);
 	var query = "SELECT shapes.*, trips.* FROM shapes JOIN trips ON shapes.shape_index = trips.shape_index WHERE route_id = '" + route + "' AND trips.feed_index > 25";
 	query = query + " LIMIT " + socrata.limit + " ;";
@@ -146,7 +149,7 @@ app.post('/sql/route', function (req, res) {
 						var prior = sel[n][i-1],
 								current = sel[n][i];
 						var result = distance(current.shape_pt_lat, current.shape_pt_lon, prior.shape_pt_lat, prior.shape_pt_lon);
-						if (result < 500 && i !== sel[n].length - 1) {
+						if (result < 750 && i !== sel[n].length - 1) {
 							trip.push(sel[n][i]);	
 						} else {
 							broken[n].push(trip);
@@ -156,9 +159,6 @@ app.post('/sql/route', function (req, res) {
 					} else {
 						trip.push(sel[n][i]);
 					}
-					if (sel[n][i] == null || sel[n][i] == undefined || typeof sel[n][i] !== 'object') {
-						sel[n].splice(i, 1);
-					}
 				}
 			}
 
@@ -167,6 +167,19 @@ app.post('/sql/route', function (req, res) {
 			res.status(500).send({error: error})
 		}
 	});
+});
+
+app.post('/sql/route/stops', function (req, res) {
+	var route = req.body.route;
+	res.status(200).send();
+	// connection.query(query, function (error, rows, fields) {
+	// 	console.log('Completed MySQL request for route: ', route);
+	// 	if (!error) {
+	// 		res.status(200).send({rows: rows, fields: fields})
+	// 	} else {
+	// 		res.status(500).send({error: error})
+	// 	}
+	// });
 });
 
 
