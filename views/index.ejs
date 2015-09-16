@@ -41,7 +41,8 @@
       
       <h2>
         Mode performance and crash data
-        <small id="loading" class="label label-default">
+        <small id="loading" class="label label-default small"
+                style="font-size: 0.5em; color: white;">
           ...loading...
         </small>
       </h2>
@@ -195,36 +196,35 @@
       var route = $("#routeSelect").val();
       if (route !== '' && route !== undefined) {
         animateLoading();
-        $.post('/sql/route/path', {route: route})
+        $.get('/route/' + route)
         .done(function (res) {
           console.log('res' , res);
 
           var pointlist = {};
-          for (dir in res.pointlist) {
+          for (dir in res.routeData.path) {
+
             pointlist[dir] = [];
-            var paths = res.pointlist[dir];
-            for (path in paths) {
-              path = paths[path];
-              var sec = [];
-              for (point in path) {
-                point = path[point];
+            var path = res.routeData.path[dir];
+            for (point in path) {
+              point = path[point];
+              if (point !== null)
                 var crumb = new L.LatLng(point.shape_pt_lat, point.shape_pt_lon);
                 crumb.properties = point;
-                sec.push(crumb);
-              }
-              pointlist[dir].push(sec);
-            };
+                pointlist[dir].push(crumb);
+            }
           }
 
           for (dir in pointlist) {
-            for (sec in pointlist[dir]) {
-              var polyline = new L.Polyline(pointlist[dir][sec], {
-                color: '#ff3232',
-                weight: 2,
-                opacity: 0.75,
-                smoothFactor: 1
-              });
+            var cl = (dir == 0) ? 'red' : 'blue';
+            var polyline = new L.Polyline(pointlist[dir], {
+              color: cl,
+              weight: 2,
+              opacity: 0.75,
+              smoothFactor: 1
+            });
+            if (dir == 1) {
               polyline.addTo(map);
+              map.fitBounds(polyline.getBounds());
             }
           };
 

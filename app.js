@@ -38,6 +38,7 @@ var socrata = {
 };
 
 var buslines = require('./static/data/buslines.js');
+var shapefiler = require('./methods/shapefiler.js');
 
 
 // query class construction
@@ -54,23 +55,62 @@ Query.prototype.makeOptions = function (query) {
 };
 
 
-// © Chris Veness, MIT-licensed, http://www.movable-type.co.uk/scripts/latlong.html#equirectangular
-function distance(lambda1,phi1,lambda2,phi2) {
-  var R = 6371000; // meters
-  difLambda = (lambda2 - lambda1) * Math.PI / 180;
-  phi1 = phi1 * Math.PI / 180;
-  phi2 = phi2 * Math.PI / 180;
-  var x = difLambda * Math.cos((phi1+phi2)/2);
-  var y = (phi2-phi1);
-  var d = Math.sqrt(x*x + y*y);
-  return R * d;
-};
+// identify bus route
+function getRouteId (id) {
+	var route = buslines[id];
+	if (route == undefined) {
+		id = id.toUpperCase();
+		for (var rte in buslines) {
+		  if (buslines.hasOwnProperty(rte)) {
+	      if (buslines[rte] === id) {
+	        route = buslines[rte];
+	      } else if (rte == id) {
+	      	route = buslines[rte];
+	      }
+		  }
+		}
+	} 
+	if (route == undefined) {
+		return false;
+	} else {
+		return route;
+	}
+}
 
 
 app.get('/', function (req, res) {
 	var bl = Object.keys(buslines);
 	res.render('index', {buslines: bl});
 })
+
+app.get('/shape/:id', function(req, res) {
+
+	// identify bus route and handle case exceptions
+	var route = getRouteId(req.params.id);
+
+	// fail if can't find route
+	if (route == false) {
+		res.status(404).send('Query id does not exist.');
+	} else {
+
+		// continue and create shapefile
+		var query = "SELECT shapes.*, trips.* FROM shapes JOIN trips ON shapes.shape_index = trips.shape_index WHERE route_id = '" + route + "' AND trips.feed_index > 25";
+		connection.query(query, function (error, rows, fields) {
+			console.log('Completed MySQL request for route: ', route);
+			if (!error) {
+				res.status(500).send('Error on internal SQL query.');
+			} else {
+				// do something
+				var sf = new shapefiler;
+				var m = sf.create();
+				console.log(m);
+			}
+		});
+
+		// res.status(200).send('user ' + route);
+		res.render('shapefile.ejs')
+	}
+});
 
 app.post('/socrata', function (req, res) {
 	var mode = req.body.mode;
@@ -98,75 +138,80 @@ app.post('/socrata', function (req, res) {
 })
 
 
-app.post('/sql/route/path', function (req, res) {
-	var route = buslines[req.body.route];
+app.get('/route/:id', function (req, res) {
+
+	var route = getRouteId(req.params.id);
+	if (route == false) {
+		res.status(404).send('Query id does not exist.');
+	}
+
 	console.log('Received MySQL request for route: ', route);
-	var query = "SELECT shapes.*, trips.* FROM shapes JOIN trips ON shapes.shape_index = trips.shape_index WHERE route_id = '" + route + "' AND trips.feed_index > 25";
-	query = query + " LIMIT " + socrata.limit + " ;";
-	connection.query(query, function (error, rows, fields) {
-		console.log('Completed MySQL request for route: ', route);
-		if (!error) {
-      var pointlist = {}; 
-      rows.forEach(function (point) {
-        var id = point.shape_id;
-        if (!pointlist.hasOwnProperty(id)) {
-          pointlist[id] = {};
-        }
-        if (!pointlist[id].hasOwnProperty(point.direction_id)) {
-          pointlist[id][point.direction_id] = [point];
-        } else {
-          var ti = pointlist[id][point.direction_id][0].trip_index;
-          var cr = point.trip_index;
-          if (ti == cr && (point.direction_id == 0 || point.direction_id == 1)) {
-            pointlist[id][point.direction_id].push(point);
-          }
-        }
-      });
 
-      // currently I roll everything into one trip in each direction
-      var sel = {0: [], 1:[]};
-      for (id in pointlist) {
-      	var rt = pointlist[id];
-      	if (Array.isArray(rt[0]) && rt[0].length > 0) { sel[0] = sel[0].concat(rt[0]); }
-      	if (Array.isArray(rt[1]) && rt[1].length > 0) { sel[1] = sel[1].concat(rt[1]); }
-      }
+	var query = {
+		properties: 'SELECT route_id, agency_id, route_short_name, route_long_name, route_desc, route_url, route_color, route_text_color FROM routes_current WHERE route_id = "' + route + '";',
+		directions: 'SELECT direction_id, direction_name FROM directions WHERE route_id = "' + route + '";',
+		stops0:     'SELECT stops_current.stop_id, stop_name, "" AS stop_desc, stop_lat, stop_lon FROM stops_current JOIN rds ON stops_current.stop_id = rds.stop_id WHERE route_id = "' + route + '" AND direction_id = 0;',
+		stops1:     'SELECT stops_current.stop_id, stop_name, "" AS stop_desc, stop_lat, stop_lon FROM stops_current JOIN rds ON stops_current.stop_id = rds.stop_id WHERE route_id = "' + route + '" AND direction_id = 1;',
+	};
 
-      // then I clean the results of the merge(s)
-      for (n in [0, 1]) {
-				for (var i = 0; i < sel[n].length;  i++) {
-					if (sel[n][i] == null || sel[n][i] == undefined || typeof sel[n][i] !== 'object') {
-						sel[n].splice(i, 1);
-					}
+	function runQ (key, r) {
+		connection.query(r, function (error, rows, fields) {
+			if (error) {
+				res.status(500).send({error: error});
+			} else {
+				results[key] = rows;
+				if (i == (reqs.length - 1)) {
+					results = runClean(results);
+					getRoute();
+				} else {
+					i = i + 1;
+					runQ(reqs[i], query[reqs[i]]);
 				}
 			}
+		})
+	};
 
-			// use distance measure to determine if sae trip for breadcrumbs
-			var broken = {0: [], 1:[]};
-      for (n in [0, 1]) {
-      	var trip = [];
-				for (var i = 0; i < sel[n].length;  i++) {
-					if (i > 0) {
-						var prior = sel[n][i-1],
-								current = sel[n][i];
-						var result = distance(current.shape_pt_lat, current.shape_pt_lon, prior.shape_pt_lat, prior.shape_pt_lon);
-						if (result < 750 && i !== sel[n].length - 1) {
-							trip.push(sel[n][i]);	
-						} else {
-							broken[n].push(trip);
-							trip = [];
-							trip.push(sel[n][i]);
-						}
+	function runClean (results) {
+		var out = results.properties[0];
+		out.directions = {
+			0: results.directions[0].direction_name,
+			1: results.directions[1].direction_name
+		};
+		out.stops = {
+			0: results.stops0,
+			1: results.stops1
+		};
+		return out;
+	}
+
+	function getRoute () {
+		var query = "SELECT shapes.*, trips.* FROM shapes JOIN trips ON shapes.shape_index = trips.shape_index WHERE route_id = '" + route + "' AND trips.feed_index > 25";
+		query = query + " LIMIT " + socrata.limit + " ;";
+		connection.query(query, function (error, rows, fields) {
+			if (error) {
+				res.status(500).send({error: error})
+			} else {
+				if (results == undefined) {
+					res.status(500).send('Results object missing.')
+				} else {
+					var sf = new shapefiler(rows);
+					results.path = sf.create().getCleaned();
+					if (results.path == null) {
+						res.status(500).send('Cleaned data returned null.');
 					} else {
-						trip.push(sel[n][i]);
+						console.log('got here');
+						res.status(200).send({routeData: results});
 					}
 				}
 			}
+		});
+	}
 
-			res.status(200).send({pointlist: broken})
-		} else {
-			res.status(500).send({error: error})
-		}
-	});
+	var results = {};
+	var reqs = Object.keys(query),
+			i = 0;
+	runQ(reqs[i], query[reqs[i]]);
+
 });
 
 app.post('/sql/route/stops', function (req, res) {
@@ -198,5 +243,5 @@ var server = app.listen(3000, function () {
   var host = server.address().address;
   var port = server.address().port;
 
-  console.log('Example app listening at http://%s:%s', host, port);
+  console.log('Bus app listening at http://%s:%s', host, port);
 });
